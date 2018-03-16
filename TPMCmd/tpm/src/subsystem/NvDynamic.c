@@ -75,6 +75,11 @@
 #include "Tpm.h"
 #include "PlatformData.h"
 
+#ifdef ENABLE_NV_HOOK
+#include "NvHook.h"
+extern NV_HOOK_TABLE NvHookTable;
+#endif
+
 //** Local Functions
 
 
@@ -867,6 +872,39 @@ NvIndexCacheInit(
     return;
 }
 
+#ifdef ENABLE_NV_HOOK
+//*** NvGetHook()
+// Simple lookup into any active hook table.
+PNV_HOOK_ENTRY
+NvGetHook(
+    UINT32 index
+    )
+{
+    UINT32 i;
+    UINT32 slotMax;
+
+    slotMax = NV_HOOKBASE_INDEX;
+
+    pAssert(NvHookTable.nvIndexMax < NV_HOOK_MAX_SLOTS)
+
+    // First check if the index is even in the table.
+    if ((index >= slotMax) &&
+        (index <= (NvHookTable.nvIndexMax + slotMax)))
+    {
+        // Search the table for an entry that includes this index.
+        for(i = 0; i < NvHookTable.entryCount; i++)
+        {
+            slotMax += NvHookTable.entry[i].nvIndexSpan;
+            if(index <= slotMax)
+            {
+                return (NvHookTable.entry + i);
+            }
+        }
+    }
+
+    return NULL;
+}
+#endif
 
 //*** NvGetIndexData()
 // This function is used to access the data in an NV Index. The data is returned
@@ -885,28 +923,43 @@ NvGetIndexData(
     )
 {
     TPMA_NV             nvAttributes;
+#ifdef ENABLE_NV_HOOK
+    PNV_HOOK_ENTRY nvHook;
+#endif
 //
     pAssert(nvIndex != NULL);
 
     nvAttributes = nvIndex->publicArea.attributes;
 
     pAssert(IS_ATTRIBUTE(nvAttributes, TPMA_NV, WRITTEN));
-
-    if(IS_ATTRIBUTE(nvAttributes, TPMA_NV, ORDERLY))
+#ifdef ENABLE_NV_HOOK
+    if ((nvHook = NvGetHook(nvIndex->publicArea.nvIndex & 0x00ffffff)) != NULL &&
+        nvHook->nvRead != NULL)
     {
-        // Get data from RAM buffer
-        NV_RAM_REF           ramAddr = NvRamGetIndex(nvIndex->publicArea.nvIndex);
-        pAssert(ramAddr != 0 && (size <=
-                ((NV_RAM_HEADER *)ramAddr)->size - sizeof(NV_RAM_HEADER) - offset));
-        MemoryCopy(data, ramAddr + sizeof(NV_RAM_HEADER) + offset, size);
+        nvHook->nvRead(nvIndex->publicArea.nvIndex & 0x00ffffff, data, size, offset);
     }
     else
     {
-        // Validate that read falls within range of the index
-        pAssert(offset <= nvIndex->publicArea.dataSize
-                &&  size <= (nvIndex->publicArea.dataSize - offset));
-        NvRead(data, locator + sizeof(NV_INDEX) + offset, size);
+#endif
+        if(IS_ATTRIBUTE(nvAttributes, TPMA_NV, ORDERLY))
+        {
+            // Get data from RAM buffer
+            NV_RAM_REF           ramAddr = NvRamGetIndex(nvIndex->publicArea.nvIndex);
+            pAssert(ramAddr != 0 && (size <=
+                    ((NV_RAM_HEADER *)ramAddr)->size - sizeof(NV_RAM_HEADER) - offset));
+            MemoryCopy(data, ramAddr + sizeof(NV_RAM_HEADER) + offset, size);
+        }
+        else
+        {
+            // Validate that read falls within range of the index
+            pAssert(offset <= nvIndex->publicArea.dataSize
+                    &&  size <= (nvIndex->publicArea.dataSize - offset));
+            NvRead(data, locator + sizeof(NV_INDEX) + offset, size);
+        }
+#ifdef ENABLE_NV_HOOK
     }
+#endif
+
     return;
 }
 
@@ -1042,6 +1095,9 @@ NvWriteIndexData(
     )
 {
     TPM_RC               result = TPM_RC_SUCCESS;
+#ifdef ENABLE_NV_HOOK
+    PNV_HOOK_ENTRY nvHook;
+#endif
 //
     pAssert(nvIndex != NULL);
     // Make sure that this is dealing with the 'default' index.
@@ -1092,25 +1148,38 @@ NvWriteIndexData(
                           0, nvIndex->publicArea.dataSize);
         }
     }
-    // If this is orderly data, write it to RAM
-    if(IS_ATTRIBUTE(nvIndex->publicArea.attributes, TPMA_NV, ORDERLY))
+
+#ifdef ENABLE_NV_HOOK
+    if ((nvHook = NvGetHook(nvIndex->publicArea.nvIndex & 0x00ffffff)) != NULL &&
+         nvHook->nvWrite != NULL)
     {
-        // Note: if this is the first write to a counter, the code above will queue
-        // the write to NV of the RAM data in order to update TPMA_NV_WRITTEN. In 
-        // process of doing that write, it will also write the initial counter value
-
-        // Update RAM
-        MemoryCopy(s_cachedNvRamRef + sizeof(NV_RAM_HEADER) + offset, data, size);
-
-        // And indicate that the TPM is no longer orderly
-        g_clearOrderly = TRUE;
+        result = nvHook->nvWrite(nvIndex->publicArea.nvIndex & 0x00ffffff, data, size, offset);
     }
     else
     {
-        // Offset into the index to the first byte of the data to be written to NV
-        result = NvConditionallyWrite(s_cachedNvRef + sizeof(NV_INDEX) + offset,
-                                      size, data);
+#endif
+        // If this is orderly data, write it to RAM
+        if(IS_ATTRIBUTE(nvIndex->publicArea.attributes, TPMA_NV, ORDERLY))
+        {
+            // Note: if this is the first write to a counter, the code above will queue
+            // the write to NV of the RAM data in order to update TPMA_NV_WRITTEN. In
+            // process of doing that write, it will also write the initial counter value
+
+            // Update RAM
+            MemoryCopy(s_cachedNvRamRef + sizeof(NV_RAM_HEADER) + offset, data, size);
+
+            // And indicate that the TPM is no longer orderly
+            g_clearOrderly = TRUE;
+        }
+        else
+        {
+            // Offset into the index to the first byte of the data to be written to NV
+            result = NvConditionallyWrite(s_cachedNvRef + sizeof(NV_INDEX) + offset,
+                                          size, data);
+        }
+#ifdef ENABLE_NV_HOOK
     }
+#endif
     return result;
 }
 

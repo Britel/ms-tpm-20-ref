@@ -47,6 +47,9 @@
 #define LIBRARY_COMPATIBILITY_CHECK
 #define WOLFSSL_USER_IO
 
+
+#define NO_OLD_RNGNAME
+
 #ifdef __cplusplus
     }   /* extern "C" */
 #endif
