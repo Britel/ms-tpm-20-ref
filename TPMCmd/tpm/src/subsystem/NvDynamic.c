@@ -913,7 +913,7 @@ NvGetHook(
 // This function requires that the NV Index be defined, and that the
 // required data is within the data range.  It also requires that TPMA_NV_WRITTEN
 // of the Index is SET.
-void
+TPM_RC
 NvGetIndexData(
     NV_INDEX        *nvIndex,       // IN: the in RAM index descriptor
     NV_REF           locator,       // IN: where the data is located
@@ -932,35 +932,30 @@ NvGetIndexData(
     nvAttributes = nvIndex->publicArea.attributes;
 
     pAssert(IS_ATTRIBUTE(nvAttributes, TPMA_NV, WRITTEN));
-#ifdef ENABLE_NV_HOOK
+
+#ifdef ENABLE_NV_HOOK
     if ((nvHook = NvGetHook(nvIndex->publicArea.nvIndex & 0x00ffffff)) != NULL &&
         nvHook->nvRead != NULL)
     {
-        nvHook->nvRead(nvIndex->publicArea.nvIndex & 0x00ffffff, data, size, offset);
+        return nvHook->nvRead(nvIndex->publicArea.nvIndex & 0x00ffffff, data, size, offset);
+    }
+#endif
+    if(IS_ATTRIBUTE(nvAttributes, TPMA_NV, ORDERLY))
+    {
+        // Get data from RAM buffer
+        NV_RAM_REF           ramAddr = NvRamGetIndex(nvIndex->publicArea.nvIndex);
+        pAssert(ramAddr != 0 && (size <=
+                ((NV_RAM_HEADER *)ramAddr)->size - sizeof(NV_RAM_HEADER) - offset));
+        MemoryCopy(data, ramAddr + sizeof(NV_RAM_HEADER) + offset, size);
     }
     else
     {
-#endif
-        if(IS_ATTRIBUTE(nvAttributes, TPMA_NV, ORDERLY))
-        {
-            // Get data from RAM buffer
-            NV_RAM_REF           ramAddr = NvRamGetIndex(nvIndex->publicArea.nvIndex);
-            pAssert(ramAddr != 0 && (size <=
-                    ((NV_RAM_HEADER *)ramAddr)->size - sizeof(NV_RAM_HEADER) - offset));
-            MemoryCopy(data, ramAddr + sizeof(NV_RAM_HEADER) + offset, size);
-        }
-        else
-        {
-            // Validate that read falls within range of the index
-            pAssert(offset <= nvIndex->publicArea.dataSize
-                    &&  size <= (nvIndex->publicArea.dataSize - offset));
-            NvRead(data, locator + sizeof(NV_INDEX) + offset, size);
-        }
-#ifdef ENABLE_NV_HOOK
+        // Validate that read falls within range of the index
+        pAssert(offset <= nvIndex->publicArea.dataSize
+                &&  size <= (nvIndex->publicArea.dataSize - offset));
+        NvRead(data, locator + sizeof(NV_INDEX) + offset, size);
     }
-#endif
-
-    return;
+    return TPM_RC_SUCCESS;
 }
 
 //*** NvGetUINT64Data()

@@ -66,8 +66,9 @@ TPM2_NV_Read(
     TPM_RC           result;
 
 // Input Validation
-    // Common read access checks. NvReadAccessChecks() may return
+    // Common read access checks. NvReadAccessChecks() returns
     // TPM_RC_NV_AUTHORIZATION, TPM_RC_NV_LOCKED, or TPM_RC_NV_UNINITIALIZED
+    // error may be returned at this point
     result = NvReadAccessChecks(in->authHandle, in->nvIndex,
                                 nvIndex->publicArea.attributes);
     if(result != TPM_RC_SUCCESS)
@@ -90,9 +91,9 @@ TPM2_NV_Read(
     out->data.t.size = in->size;
 
     // Perform the read
-    NvGetIndexData(nvIndex, locator, in->offset, in->size, out->data.t.buffer);
+    result = NvGetIndexData(nvIndex, locator, in->offset, in->size, out->data.t.buffer);
 
-    return TPM_RC_SUCCESS;
+    return result;
 }
 
 #endif // CC_NV_Read

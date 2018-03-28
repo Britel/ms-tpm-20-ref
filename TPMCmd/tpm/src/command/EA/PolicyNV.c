@@ -95,8 +95,13 @@ TPM2_PolicyNV(
 
 
         // Get NV data.  The size of NV data equals the input operand B size
-        NvGetIndexData(nvIndex, locator, in->offset, in->operandB.t.size, nvBuffer);
-
+         result = NvGetIndexData(nvIndex,
+                                 locator,
+                                 in->offset,
+                                 in->operandB.t.size,
+                                 nvBuffer);
+        if(result != TPM_RC_SUCCESS)
+            return result;
         // Check to see if the condition is valid
         if(!PolicySptCheckCondition(in->operation, nvBuffer,
                                     in->operandB.t.buffer, in->operandB.t.size))
