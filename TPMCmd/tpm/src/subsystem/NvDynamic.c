@@ -883,14 +883,12 @@ NvGetHook(
     UINT32 i;
     UINT32 slotMax;
 
-    slotMax = NV_HOOKBASE_INDEX;
-
-    pAssert(NvHookTable.nvIndexMax < NV_HOOK_MAX_SLOTS)
-
     // First check if the index is even in the table.
-    if ((index >= slotMax) &&
-        (index <= (NvHookTable.nvIndexMax + slotMax)))
+    if ((index >= NvHookTable.nvBase) &&
+        (index <= NvHookTable.nvLast))
     {
+        slotMax = NvHookTable.nvBase;
+
         // Search the table for an entry that includes this index.
         for(i = 0; i < NvHookTable.entryCount; i++)
         {
@@ -934,8 +932,8 @@ NvGetIndexData(
     pAssert(IS_ATTRIBUTE(nvAttributes, TPMA_NV, WRITTEN));
 
 #ifdef ENABLE_NV_HOOK
-    if ((nvHook = NvGetHook(nvIndex->publicArea.nvIndex & 0x00ffffff)) != NULL &&
-        nvHook->nvRead != NULL)
+    if (((nvHook = NvGetHook(nvIndex->publicArea.nvIndex & 0x00ffffff)) != NULL) &&
+        (nvHook->nvRead != NULL))
     {
         return nvHook->nvRead(nvIndex->publicArea.nvIndex & 0x00ffffff, data, size, offset);
     }
@@ -1145,8 +1143,8 @@ NvWriteIndexData(
     }
 
 #ifdef ENABLE_NV_HOOK
-    if ((nvHook = NvGetHook(nvIndex->publicArea.nvIndex & 0x00ffffff)) != NULL &&
-         nvHook->nvWrite != NULL)
+    if (((nvHook = NvGetHook(nvIndex->publicArea.nvIndex & 0x00ffffff)) != NULL) &&
+         (nvHook->nvWrite != NULL))
     {
         result = nvHook->nvWrite(nvIndex->publicArea.nvIndex & 0x00ffffff, data, size, offset);
     }

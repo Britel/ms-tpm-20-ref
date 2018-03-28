@@ -41,10 +41,6 @@
 
 #ifdef ENABLE_NV_HOOK
 
-// Defines the base NV index that can have an associated hook defined.
-// Each hook defined in NV_HOOK_TABLE is an offset from this index.
-#define NV_HOOKBASE_INDEX (0x00008000)
-
 // Max number of NV slots that can be associated with a hook callback.
 #define NV_HOOK_MAX_SLOTS 255
 
@@ -65,9 +61,10 @@ typedef struct {
 } NV_HOOK_ENTRY, *PNV_HOOK_ENTRY;
 
 typedef struct {
-    UINT16          nvIndexMax;    // Highest ordered index in this table. Base zero.
+    UINT16          nvBase;        // First index in this table.
+    UINT16          nvLast;        // Last index in this table.
     UINT16          entryCount;    // Number of entries in this table.
-    PNV_HOOK_ENTRY  entry;         // Flat array of entries. The first entry starts at NV_HOOKBASE_INDEX
+    PNV_HOOK_ENTRY  entry;         // Flat array of entries.
 } NV_HOOK_TABLE, *PNV_HOOK_TABLE;
 
 
